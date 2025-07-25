@@ -13,4 +13,4 @@ run:
     port: 8000
   env:
     - name: OPENAI_API_KEY
-      valueFrom: arn:aws:secretsmanager:us-west-2:123456789012:secret:kfranz-hackathon-openai-api-key
+      value-from: arn:aws:secretsmanager:us-west-2:123456789012:secret:kfranz-hackathon-openai-api-key
