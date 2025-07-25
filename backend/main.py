@@ -14,8 +14,6 @@ if not api_key:
     logger.error("Environment variable OPENAI_API_KEY is not set")
     raise RuntimeError("Environment variable OPENAI_API_KEY is not set")
 
-logger.info(f"OPENAI_API_KEY: {api_key[:10]}{'*' * (len(api_key) - 10)}")
-
 client = OpenAI(api_key=api_key)
 
 app = FastAPI()
@@ -52,6 +50,7 @@ class QueryOut(BaseModel):
 
 @app.post("/optimize", response_model=QueryOut)
 async def optimize(query: QueryIn):
+    logger.info(f"OPENAI_API_KEY: {api_key[:10]}{'*' * (len(api_key) - 10)}")
     if not client.api_key:
         raise HTTPException(500, "OPENAI_API_KEY missing")
     try:
