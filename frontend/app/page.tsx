@@ -19,8 +19,9 @@ export default function Home() {
       });
       const data = await r.json();
       setResult(data);
-    } catch (e) {
+    } catch (err) {
       setResult({ error: "Request failed, check console." });
+      console.error(err);
     } finally {
       setLoading(false);
     }
