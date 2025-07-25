@@ -1,41 +1,76 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Global ignores
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+.DS\_Store
+.idea/
+.vscode/
+\*.swp
+\*\~
 
-# testing
-/coverage
+# Logs
 
-# next.js
-/.next/
-/out/
+npm-debug.log\*
+yarn-debug.log\*
+yarn-error.log\*
+pnpm-debug.log\*
 
-# production
-/build
+\############################################
 
-# misc
-.DS_Store
-*.pem
+# Front-end (Next.js / Node)
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
+\############################################
+node\_modules/
+.next/
+.out/
+.DOCS\_NEXT/
 
-# env files (can opt-in for committing if needed)
-.env*
+# Environment files (keep a sample in .env.example)
 
-# vercel
-.vercel
+.env\*
+!.env.example
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+\############################################
+
+# Back-end (Python / FastAPI)
+
+\############################################
+
+# Virtual environments
+
+venv/
+backend/venv/
+.Python
+
+# Compiled files / caches
+
+**pycache**/
+\*.py\[cod]
+\*.so
+
+# Packaging / build artefacts
+
+build/
+dist/
+\*.egg-info/
+.eggs/
+
+# Coverage / testing
+
+.coverage
+.coverage.\*
+.cache/
+.pytest\_cache/
+htmlcov/
+
+\############################################
+
+# AWS Amplify & misc build artefacts
+
+\############################################
+amplify/#current-cloud-backend/
+amplify/.awscloudformation/
+
+# Docker (local overrides)
+
+docker-compose.override.yml
+
+# End of file
