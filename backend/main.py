@@ -31,7 +31,7 @@ app.add_middleware(
 SYSTEM_PROMPT = """
 You are a senior database performance engineer.
 
-Rewrite the user's SQL so it is functionally equivalent but more performant and standards‑compliant.
+Rewrite the user's SQL so it is functionally equivalent but more performant.
 
 Return the result wrapped in exactly the following XML tags (and nothing else):
 
