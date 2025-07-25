@@ -1,16 +1,21 @@
+# NOTE: move this file to the repo root (hackathon-2025/amplify.yml)
+# so Amplify can detect it.  Leaving it here for now just updates the content.
+
 version: 1
-frontend:
-  phases:
-    preBuild:
-      commands:
-        - npm ci
-    build:
-      commands:
-        - npm run build
-  artifacts:
-    baseDirectory: .next
-    files:
-      - '**/*'
-  cache:
-    paths:
-      - node_modules/**/*
+applications:
+  - appRoot: frontend          # points to your Next.js app folder
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - npm ci
+        build:
+          commands:
+            - npm run build
+      artifacts:
+        baseDirectory: .next   # Next.js build output
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - node_modules/**/*
