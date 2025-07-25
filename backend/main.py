@@ -4,10 +4,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from openai import OpenAI
 import re
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 api_key = os.getenv("OPENAI_API_KEY")
 if not api_key:
+    logger.error("Environment variable OPENAI_API_KEY is not set")
     raise RuntimeError("Environment variable OPENAI_API_KEY is not set")
+
+logger.info(f"OPENAI_API_KEY: {api_key[:10]}{'*' * (len(api_key) - 10)}")
 
 client = OpenAI(api_key=api_key)
 
