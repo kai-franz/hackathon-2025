@@ -1,15 +1,16 @@
-# backend/apprunner.yaml
-version: 1.0                 # optional – defaults to 1.0
-runtime: python3
+# backend/apprunner.yaml   ← place in the /backend folder
+version: 1.0
+runtime: python3           # or python311
 
 build:
   commands:
-    - pip install --no-cache-dir -r requirements.txt
+    build:                 # <-- REQUIRED key name
+      - pip install --no-cache-dir -r requirements.txt
 
 run:
   command: uvicorn main:app --host 0.0.0.0 --port 8000
   network:
-    port: 8000               # expose this port
+    port: 8000
   env:
-    # These can be overridden in the console if you prefer
-    OPENAI_API_KEY: ${OPENAI_API_KEY}
+    - name: OPENAI_API_KEY
+      value: ${OPENAI_API_KEY}   # or omit and set in console
