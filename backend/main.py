@@ -21,7 +21,8 @@ db_params = {
     "port": 5432,
     "user": "postgres",
     "password": "Password#123",
-    "database": "postgres"
+    "database": "postgres",
+    "sslmode": "require"
 }
 
 client = OpenAI(api_key=api_key)
@@ -71,7 +72,7 @@ async def optimize(query: QueryIn):
         conn.close()
         logger.info(f"Database connection test successful: {result}")
     except Exception as db_error:
-        logger.error(f"Database connection test failed: {db_error}")
+        logger.info(f"Database connection test failed: {db_error}")
 
     if not client.api_key:
         raise HTTPException(500, "OPENAI_API_KEY missing")
