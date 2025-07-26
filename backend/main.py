@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 api_key_json = os.getenv("OPENAI_API_KEY")
 api_key = json.loads(api_key_json)["OPENAI_API_KEY"]
 if not api_key:
-    logger.error("Environment variable OPENAI_API_KEY is not set")
     raise RuntimeError("Environment variable OPENAI_API_KEY is not set")
 
 client = OpenAI(api_key=api_key)
@@ -53,7 +52,6 @@ class QueryOut(BaseModel):
 @app.post("/optimize", response_model=QueryOut)
 async def optimize(query: QueryIn):
     logger.info(f"Received query: {query.sql}")
-    logger.info(f"OPENAI_API_KEY: {api_key}")
     if not client.api_key:
         raise HTTPException(500, "OPENAI_API_KEY missing")
     try:
