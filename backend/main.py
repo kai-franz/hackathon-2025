@@ -50,7 +50,8 @@ class QueryOut(BaseModel):
 
 @app.post("/optimize", response_model=QueryOut)
 async def optimize(query: QueryIn):
-    logger.info(f"OPENAI_API_KEY: {api_key[:10]}{'*' * (len(api_key) - 10)}")
+    logger.info(f"Received query: {query.sql}")
+    logger.info(f"OPENAI_API_KEY: {api_key}")
     if not client.api_key:
         raise HTTPException(500, "OPENAI_API_KEY missing")
     try:
