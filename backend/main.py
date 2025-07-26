@@ -6,6 +6,7 @@ from openai import OpenAI
 import re
 import logging
 import json
+import psycopg2
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -14,6 +15,14 @@ api_key_json = os.getenv("OPENAI_API_KEY")
 api_key = json.loads(api_key_json)["OPENAI_API_KEY"]
 if not api_key:
     raise RuntimeError("Environment variable OPENAI_API_KEY is not set")
+
+db_params = {
+    "host": "kfranz-hackathon-instance-1.cl8cgsi0c707.us-west-2.rds.amazonaws.com",
+    "port": 5432,
+    "user": "postgres",
+    "password": "Password#123",
+    "database": "postgres"
+}
 
 client = OpenAI(api_key=api_key)
 
@@ -52,6 +61,18 @@ class QueryOut(BaseModel):
 @app.post("/optimize", response_model=QueryOut)
 async def optimize(query: QueryIn):
     logger.info(f"Received query: {query.sql}")
+
+    try:
+        conn = psycopg2.connect(**db_params)
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        logger.info(f"Database connection test successful: {result}")
+    except Exception as db_error:
+        logger.error(f"Database connection test failed: {db_error}")
+
     if not client.api_key:
         raise HTTPException(500, "OPENAI_API_KEY missing")
     try:
