@@ -19,7 +19,7 @@ if not api_key:
 db_params = {
     "host": "kfranz-hackathon-instance-1.cl8cgsi0c707.us-west-2.rds.amazonaws.com",
     "port": 5432,
-    "user": "postgres",
+    "user": "appuser",
     "password": "Password#123",
     "database": "postgres",
     "sslmode": "require"
