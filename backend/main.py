@@ -5,12 +5,13 @@ from pydantic import BaseModel
 from openai import OpenAI
 import re
 import logging
+import json
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-api_key_dict = os.getenv("OPENAI_API_KEY")
-api_key = api_key_dict["OPENAI_API_KEY"]
+api_key_json = os.getenv("OPENAI_API_KEY")
+api_key = json.loads(api_key_json)["OPENAI_API_KEY"]
 if not api_key:
     logger.error("Environment variable OPENAI_API_KEY is not set")
     raise RuntimeError("Environment variable OPENAI_API_KEY is not set")
