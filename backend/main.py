@@ -81,13 +81,15 @@ async def optimize(query: QueryIn):
                 secretArn=SECRET_ARN,
                 database=DB_NAME,
                 sql=sql,
-                parameters=params or [],
                 includeResultMetadata=True,
             )
-            return rds.execute_statement(**kwargs)["records"]
+            logger.info(f"Executing statement: {sql}")
+            result = rds.execute_statement(**kwargs)["records"]
+            logger.info(f"Done. Result: {result}")
+            return result
         
         # Test database connection
-        result = run("SELECT 1")
+        result = run("SELECT 1;")
         logger.info(f"Database connection test successful: {result}")
     except Exception as db_error:
         logger.info(f"Database connection test failed: {db_error}")
