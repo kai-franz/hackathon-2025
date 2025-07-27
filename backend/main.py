@@ -83,7 +83,6 @@ async def optimize(query: QueryIn):
                 sql=sql,
                 parameters=params or [],
                 includeResultMetadata=True,
-                transactionId=tx,
             )
             return rds.execute_statement(**kwargs)["records"]
         
