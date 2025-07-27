@@ -1,12 +1,41 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { atomDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import ReactMarkdown from "react-markdown";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 
 export default function Home() {
   const [sql, setSql] = useState("");
   const [result, setResult] = useState<{optimized_query?: string; explanation?: string; error?: string}>();
   const [loading, setLoading] = useState(false);
+
+  type SlowQuery = { id: string; query: string; suggestions: string };
+
+  const [slowQueries, setSlowQueries] = useState<SlowQuery[]>([]);
+  const [sqLoading, setSqLoading] = useState(false);
+  const [sqError, setSqError] = useState<string | null>(null);
+
+  const fetchSlowQueries = async () => {
+    if (sqLoading) return;
+    setSqLoading(true);
+    setSqError(null);
+    try {
+      const r = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/slow_queries`);
+      const data = await r.json();
+      setSlowQueries(data ?? []);
+    } catch (err) {
+      console.error(err);
+      setSqError("Failed to fetch slow queries.");
+    } finally {
+      setSqLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSlowQueries();
+  }, []);
 
   const optimize = async () => {
     if (!sql.trim()) return;
@@ -28,47 +57,132 @@ export default function Home() {
   };
 
   return (
-    <main className="flex flex-col items-center justify-center min-h-screen p-8 space-y-6">
-      <h1 className="text-3xl font-bold">SQL Optimizer</h1>
+    <main className="flex flex-col items-center justify-start min-h-screen p-8 w-full bg-gradient-to-br from-[#0d1117] via-[#0a1120] to-black text-slate-100">
+      <Tabs defaultValue="optimize" className="w-full max-w-5xl">
+        <TabsList className="mb-8 flex justify-center">
+          <TabsTrigger value="optimize">Optimizer</TabsTrigger>
+          <TabsTrigger value="slow-queries">Slow Queries</TabsTrigger>
+        </TabsList>
 
-      <textarea
-        className="w-full max-w-2xl h-48 p-3 border rounded bg-gray-800 text-gray-100 border-gray-600 placeholder-gray-400 font-mono"
-        placeholder="Paste your SQL query here..."
-        value={sql}
-        onChange={e => setSql(e.target.value)}
-      />
+        <TabsContent value="optimize">
+          {/* --- existing optimizer UI start --- */}
+          <div className="flex flex-col items-center space-y-6">
+            <h1 className="text-3xl font-bold">SQL Optimizer</h1>
 
-      <button
-        onClick={optimize}
-        disabled={loading}
-        className="px-4 py-2 rounded text-white bg-blue-600 disabled:opacity-50"
-      >
-        {loading ? "Optimizing…" : "Optimize"}
-      </button>
+            <textarea
+              className="w-full max-w-2xl h-48 p-3 border rounded bg-gray-800 text-gray-100 border-gray-600 placeholder-gray-400 font-mono"
+              placeholder="Paste your SQL query here..."
+              value={sql}
+              onChange={e => setSql(e.target.value)}
+            />
 
-      {result?.error && <p className="text-red-600">{result.error}</p>}
-
-      {result?.optimized_query && (
-        <section className="w-full max-w-2xl space-y-4">
-          <div>
-            <h2 className="font-semibold">Optimized query</h2>
-            <SyntaxHighlighter
-              language="sql"
-              style={atomDark}
-              wrapLongLines
-              customStyle={{ fontFamily: "var(--font-geist-mono)" }}
+            <button
+              onClick={optimize}
+              disabled={loading}
+              className="px-4 py-2 rounded text-white bg-blue-600 disabled:opacity-50"
             >
-              {result.optimized_query ?? ""}
-            </SyntaxHighlighter>
+              {loading ? "Optimizing…" : "Optimize"}
+            </button>
+
+            {result?.error && <p className="text-red-600">{result.error}</p>}
+
+            {result?.optimized_query && (
+              <section className="w-full max-w-2xl space-y-4">
+                <div>
+                  <h2 className="font-semibold">Optimized query</h2>
+                  <SyntaxHighlighter
+                    language="sql"
+                    style={vscDarkPlus}
+                    wrapLongLines
+                    customStyle={{ fontFamily: "var(--font-geist-mono)" }}
+                  >
+                    {result.optimized_query ?? ""}
+                  </SyntaxHighlighter>
+                </div>
+                {result.explanation && (
+                  <div>
+                    <h2 className="font-semibold">Explanation</h2>
+                    <p className="bg-gray-800 p-4 rounded text-gray-200 whitespace-pre-wrap font-mono">
+                      {result.explanation}
+                    </p>
+                  </div>
+                )}
+              </section>
+            )}
           </div>
-          {result.explanation && (
-            <div>
-              <h2 className="font-semibold">Explanation</h2>
-              <p className="bg-gray-800 p-4 rounded text-gray-200 whitespace-pre-wrap font-mono">{result.explanation}</p>
+          {/* --- existing optimizer UI end --- */}
+        </TabsContent>
+
+        <TabsContent value="slow-queries">
+          <div className="space-y-6">
+            <div className="flex items-center gap-4">
+            <button
+              onClick={fetchSlowQueries}
+              disabled={sqLoading}
+              className="px-4 py-2 rounded-md bg-gradient-to-r from-cyan-500 to-indigo-500 font-medium hover:brightness-110 transition disabled:opacity-50"
+            >
+              {sqLoading ? "Refreshing…" : "Refresh"}
+            </button>
+              {sqError && <p className="text-red-600">{sqError}</p>}
             </div>
-          )}
-        </section>
-      )}
+
+            <div className="flex flex-col gap-6 w-full">
+              {slowQueries.map((q, idx) => (
+                <Card key={q.id ?? idx} className="w-full bg-[#131a24]/80 border-[#1f2a37]/80 shadow-lg shadow-cyan-500/10 backdrop-blur-md">
+                  <CardHeader>
+                    <CardTitle>Slow Query #{idx + 1}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <h3 className="font-semibold mb-2">Original</h3>
+                      <SyntaxHighlighter
+                        language="sql"
+                        style={vscDarkPlus}
+                        wrapLongLines
+                        customStyle={{ fontFamily: "var(--font-geist-mono)" }}
+                      >
+                        {q.query}
+                      </SyntaxHighlighter>
+                    </div>
+                    <div>
+                      <h3 className="font-semibold mb-2">AI suggestions</h3>
+                      <ReactMarkdown
+                        className="prose prose-sm prose-invert max-w-none"
+                        components={{
+                          code({ node, className, children, ...props }) {
+                            const match = /language-(\w+)/.exec(className || "");
+                            const isInline = !node || node.position?.start.line === node.position?.end.line;
+                            return !isInline && match ? (
+                              <SyntaxHighlighter
+                                language={match[1]}
+                                style={vscDarkPlus}
+                                wrapLongLines
+                                customStyle={{ fontFamily: "var(--font-geist-mono)" }}
+                              >
+                                {String(children).replace(/\n$/, "")}
+                              </SyntaxHighlighter>
+                            ) : (
+                              <code className={className} {...props}>
+                                {children}
+                              </code>
+                            );
+                          },
+                        }}
+                      >
+                        {q.suggestions}
+                      </ReactMarkdown>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {!sqLoading && slowQueries.length === 0 && (
+              <p className="text-gray-400 text-center">No slow queries found 🎉</p>
+            )}
+          </div>
+        </TabsContent>
+      </Tabs>
     </main>
   );
 }
