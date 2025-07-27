@@ -7,6 +7,7 @@ import re
 import logging
 import json
 import psycopg2
+import boto3
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -64,12 +65,30 @@ async def optimize(query: QueryIn):
     logger.info(f"Received query: {query.sql}")
 
     try:
-        conn = psycopg2.connect(**db_params)
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1")
-        result = cursor.fetchone()
-        cursor.close()
-        conn.close()
+        rds = boto3.client("rds-data", region_name="us-west-2")
+        
+        CLUSTER_ARN = "arn:aws:rds:us-west-2:990743404907:cluster:kfranz-hackathon"
+        SECRET_ARN = "arn:aws:secretsmanager:us-west-2:990743404907:secret:rds!cluster-b4676911-04f1-4cbc-a9d4-cb7c07d59908-AgoJSg"
+        DB_NAME = "postgres"
+        
+        if not all([CLUSTER_ARN, SECRET_ARN, DB_NAME]):
+            raise RuntimeError("Missing required environment variables: CLUSTER_ARN, SECRET_ARN, DB_NAME")
+        
+        def run(sql, params=None, tx=None):
+            """Helper wrapping rds-data ExecuteStatement"""
+            kwargs = dict(
+                resourceArn=CLUSTER_ARN,
+                secretArn=SECRET_ARN,
+                database=DB_NAME,
+                sql=sql,
+                parameters=params or [],
+                includeResultMetadata=True,
+                transactionId=tx,
+            )
+            return rds.execute_statement(**kwargs)["records"]
+        
+        # Test database connection
+        result = run("SELECT 1")
         logger.info(f"Database connection test successful: {result}")
     except Exception as db_error:
         logger.info(f"Database connection test failed: {db_error}")
