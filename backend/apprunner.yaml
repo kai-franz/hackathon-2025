@@ -1,13 +1,13 @@
 # backend/apprunner.yaml
 version: 1.0
-runtime: python3
+runtime: python311
 
 build:
   commands:
     pre-build:
       - dnf install -y postgresql
     build:
-      - pip install --no-cache-dir -r requirements.txt
+      - pip3 install --no-cache-dir -r requirements.txt
 
 run:
   command: uvicorn main:app --host 0.0.0.0 --port 8000
