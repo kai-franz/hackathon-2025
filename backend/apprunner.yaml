@@ -10,9 +10,8 @@ build:
       - pip install --no-cache-dir -r requirements.txt
 
 run:
-  runtime:
-    pre-run:
-      - dnf install -y postgresql
+  pre-run:
+    - dnf install -y postgresql
   command: uvicorn main:app --host 0.0.0.0 --port 8000
   network:
     port: 8000
