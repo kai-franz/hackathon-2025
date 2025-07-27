@@ -9,6 +9,8 @@ import json
 import psycopg2
 import boto3
 from typing import List
+import datetime
+import subprocess
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -66,6 +68,9 @@ class SlowQuery(BaseModel):
     query: str
     suggestions: str
 
+class DebugInfo(BaseModel):
+    message: str
+
 rds = boto3.client("rds-data", region_name="us-west-2")
         
 CLUSTER_ARN = "arn:aws:rds:us-west-2:990743404907:cluster:kfranz-hackathon"
@@ -74,7 +79,6 @@ DB_NAME = "postgres"
 
 if not all([CLUSTER_ARN, SECRET_ARN, DB_NAME]):
     raise RuntimeError("Missing required environment variables: CLUSTER_ARN, SECRET_ARN, DB_NAME")
-
 
 def run_query_on_aurora(sql, params=None, tx=None):
     """Helper wrapping rds-data ExecuteStatement"""
@@ -89,6 +93,14 @@ def run_query_on_aurora(sql, params=None, tx=None):
     result = rds.execute_statement(**kwargs)["records"]
     logger.info(f"Done. Result: {result}")
     return result
+
+customer_db_params = {
+    "host": "kfranz-hackathon-instance-1.cl8cgsi0c707.us-west-2.rds.amazonaws.com",
+    "port": 5433,
+    "user": "yugabyte",
+    "password": "Password#123",
+    "database": "yugabyte",
+}
 
 @app.post("/optimize", response_model=QueryOut)
 async def optimize(query: QueryIn):
@@ -195,3 +207,86 @@ async def slow_queries(limit: int = 20):
         )
 
     return slow_queries
+
+@app.get("/debug", response_model=DebugInfo)
+async def debug():
+    """
+    Return debug information including system status and database connectivity.
+    """
+    logger.info("Debug endpoint called")
+    
+    debug_messages = []
+    
+    # Check current time
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
+    debug_messages.append(f"Server time: {current_time}")
+    
+    # Check OpenAI API key
+    if api_key:
+        debug_messages.append("✅ OpenAI API key is configured")
+    else:
+        debug_messages.append("❌ OpenAI API key is missing")
+    
+    # Check database connection
+    try:
+        result = run_query_on_aurora("SELECT version();")
+        if result:
+            debug_messages.append("✅ Database connection successful")
+            debug_messages.append(f"Database version: {result[0][0]['stringValue']}")
+        else:
+            debug_messages.append("❌ Database connection failed - no result")
+    except Exception as db_error:
+        debug_messages.append(f"❌ Database connection failed: {str(db_error)}")
+    
+    # Check AWS credentials
+    try:
+        sts = boto3.client('sts')
+        identity = sts.get_caller_identity()
+        debug_messages.append(f"✅ AWS credentials configured - Account: {identity.get('Account', 'Unknown')}")
+    except Exception as aws_error:
+        debug_messages.append(f"❌ AWS credentials issue: {str(aws_error)}")
+    
+    # Environment info
+    debug_messages.append(f"Environment variables loaded: {len(os.environ)} total")
+
+    # Check psql command availability
+    try:
+        result = subprocess.run(
+            ['psql', '--version'], 
+            capture_output=True, 
+            text=True, 
+            timeout=5
+        )
+        if result.returncode == 0:
+            debug_messages.append(f"✅ psql available: {result.stdout.strip()}")
+            
+            # Try to connect with psql to see typical error
+            try:
+                psql_result = subprocess.run(
+                    ['psql', '-c', 'SELECT 1;'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                if psql_result.returncode != 0:
+                    error_msg = psql_result.stderr.strip()
+                    if "/tmp/.s.PGSQL.5432" in error_msg or "connection to server" in error_msg:
+                        debug_messages.append(f"✅ psql shows expected local connection error: {error_msg}")
+                    else:
+                        debug_messages.append(f"⚠️ psql error (unexpected): {error_msg}")
+                else:
+                    debug_messages.append("⚠️ psql connected successfully (unexpected for local)")
+            except subprocess.TimeoutExpired:
+                debug_messages.append("❌ psql connection attempt timed out")
+            except Exception as psql_error:
+                debug_messages.append(f"❌ psql connection test failed: {str(psql_error)}")
+        else:
+            debug_messages.append(f"❌ psql command failed: {result.stderr.strip()}")
+    except FileNotFoundError:
+        debug_messages.append("❌ psql command not found")
+    except subprocess.TimeoutExpired:
+        debug_messages.append("❌ psql version check timed out")
+    except Exception as psql_check_error:
+        debug_messages.append(f"❌ psql check failed: {str(psql_check_error)}")
+    
+    return DebugInfo(message="\n".join(debug_messages))

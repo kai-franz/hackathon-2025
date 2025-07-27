@@ -17,6 +17,9 @@ export default function Home() {
   const [sqLoading, setSqLoading] = useState(false);
   const [sqError, setSqError] = useState<string | null>(null);
 
+  const [debugInfo, setDebugInfo] = useState<{message?: string; error?: string}>();
+  const [debugLoading, setDebugLoading] = useState(false);
+
   const fetchSlowQueries = async () => {
     if (sqLoading) return;
     setSqLoading(true);
@@ -36,6 +39,21 @@ export default function Home() {
   useEffect(() => {
     fetchSlowQueries();
   }, []);
+
+  const fetchDebugInfo = async () => {
+    if (debugLoading) return;
+    setDebugLoading(true);
+    try {
+      const r = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/debug`);
+      const data = await r.json();
+      setDebugInfo(data);
+    } catch (err) {
+      console.error(err);
+      setDebugInfo({ error: "Failed to fetch debug info." });
+    } finally {
+      setDebugLoading(false);
+    }
+  };
 
   const optimize = async () => {
     if (!sql.trim()) return;
@@ -62,6 +80,7 @@ export default function Home() {
         <TabsList className="mb-8 flex justify-center">
           <TabsTrigger value="optimize">Optimizer</TabsTrigger>
           <TabsTrigger value="slow-queries">Slow Queries</TabsTrigger>
+          <TabsTrigger value="debug">Debug</TabsTrigger>
         </TabsList>
 
         <TabsContent value="optimize">
@@ -180,6 +199,35 @@ export default function Home() {
             {!sqLoading && slowQueries.length === 0 && (
               <p className="text-gray-400 text-center">No slow queries found 🎉</p>
             )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="debug">
+          <div className="space-y-6">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={fetchDebugInfo}
+                disabled={debugLoading}
+                className="px-4 py-2 rounded-md bg-gradient-to-r from-purple-500 to-pink-500 font-medium hover:brightness-110 transition disabled:opacity-50"
+              >
+                {debugLoading ? "Loading…" : "Fetch Debug Info"}
+              </button>
+            </div>
+
+            <Card className="w-full max-w-2xl bg-[#131a24]/80 border-[#1f2a37]/80 shadow-lg shadow-purple-500/10 backdrop-blur-md">
+              <CardHeader>
+                <CardTitle>Debug Information</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {debugInfo?.error ? (
+                  <p className="text-red-400">{debugInfo.error}</p>
+                ) : debugInfo?.message ? (
+                  <p className="text-gray-200">{debugInfo.message}</p>
+                ) : (
+                  <p className="text-gray-400">Click "Fetch Debug Info" to load debug information.</p>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
       </Tabs>

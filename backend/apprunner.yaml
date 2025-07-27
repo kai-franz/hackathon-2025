@@ -1,13 +1,18 @@
-# backend/apprunner.yaml   ← place in the /backend folder
+# backend/apprunner.yaml
 version: 1.0
-runtime: python3           # or python311
+runtime: python3
 
 build:
   commands:
-    build:                 # <-- REQUIRED key name
+    pre-build:
+      - dnf install -y postgresql
+    build:
       - pip install --no-cache-dir -r requirements.txt
 
 run:
+  runtime:
+    pre-run:
+      - dnf install -y postgresql
   command: uvicorn main:app --host 0.0.0.0 --port 8000
   network:
     port: 8000
