@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import ReactMarkdown from "react-markdown";
-import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { atomOneDarkReasonable } from "react-syntax-highlighter/dist/esm/styles/hljs";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 
@@ -111,7 +111,7 @@ export default function Home() {
                   <h2 className="font-semibold">Optimized query</h2>
                   <SyntaxHighlighter
                     language="sql"
-                    style={vscDarkPlus}
+                    style={atomOneDarkReasonable}
                     wrapLongLines
                     customStyle={{ fontFamily: "var(--font-geist-mono)" }}
                   >
@@ -156,7 +156,7 @@ export default function Home() {
                       <h3 className="font-semibold mb-2">Original</h3>
                       <SyntaxHighlighter
                         language="sql"
-                        style={vscDarkPlus}
+                        style={atomOneDarkReasonable}
                         wrapLongLines
                         customStyle={{ fontFamily: "var(--font-geist-mono)" }}
                       >
@@ -174,7 +174,7 @@ export default function Home() {
                             return !isInline && match ? (
                               <SyntaxHighlighter
                                 language={match[1]}
-                                style={vscDarkPlus}
+                                style={atomOneDarkReasonable}
                                 wrapLongLines
                                 customStyle={{ fontFamily: "var(--font-geist-mono)" }}
                               >
