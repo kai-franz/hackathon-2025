@@ -197,6 +197,67 @@ async def slow_queries(limit: int = 5):
     logger.info(f"Created session {session_id} with {len(slow_queries_list)} queries")
     return SlowQueriesResponse(queries=slow_queries_list, session_id=session_id)
 
+@app.get("/slow_queries/preview", response_model=SlowQueriesResponse)
+async def slow_queries_preview(limit: int = 5):
+    """
+    Return the top `limit` slow queries without starting any background AI processing.
+    Used to check what queries are available and their current status.
+    """
+    logger.info("Fetching slow queries preview from Aurora (no AI processing)")
+    session_id = str(uuid.uuid4())
+    
+    # --- pull slow queries from pg_stat_statements ---
+    try:
+        rows = run_query_on_aurora(
+            f'''
+            SELECT query, ai_suggestion
+            FROM statements
+            ORDER BY total_time DESC
+            LIMIT {limit}
+            ''',
+        )
+    except Exception as e:
+        logger.error(f"Error fetching slow queries preview: {e}")
+        raise HTTPException(500, f"Could not retrieve slow queries: {e}")
+
+    # Create session for tracking (but don't start any background tasks)
+    task_sessions[session_id] = {}
+    slow_queries_list: List[SlowQuery] = []
+    
+    # --- process queries without starting AI generation ---
+    for i, row in enumerate(rows):
+        query_id = str(i + 1)
+        sql = row[0]['stringValue']
+        ai_suggestion = row[1]['stringValue'] if row[1].get('stringValue') else None
+        
+        # Create the slow query object
+        if ai_suggestion:
+            # Already have AI suggestion
+            slow_query = SlowQuery(
+                id=query_id,
+                query=sql.strip(),
+                suggestions=ai_suggestion,
+                status=QueryStatus.COMPLETED,
+                current_step="Analysis complete",
+                progress_percentage=100
+            )
+        else:
+            # Need to generate AI suggestion (but don't start it)
+            slow_query = SlowQuery(
+                id=query_id,
+                query=sql.strip(),
+                suggestions="",
+                status=QueryStatus.PENDING,
+                current_step="Ready for analysis",
+                progress_percentage=0
+            )
+        
+        task_sessions[session_id][query_id] = slow_query
+        slow_queries_list.append(slow_query)
+    
+    logger.info(f"Created preview session {session_id} with {len(slow_queries_list)} queries")
+    return SlowQueriesResponse(queries=slow_queries_list, session_id=session_id)
+
 @app.get("/slow_queries/{session_id}/status", response_model=List[SlowQuery])
 async def get_slow_queries_status(session_id: str):
     """Get the current status of slow queries for a session"""

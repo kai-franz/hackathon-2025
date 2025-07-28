@@ -10,7 +10,7 @@ import javascript from "react-syntax-highlighter/dist/esm/languages/hljs/javascr
 SyntaxHighlighter.registerLanguage("sql", sql);
 SyntaxHighlighter.registerLanguage("javascript", javascript);
 import remarkGfm from "remark-gfm";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Copy as CopyIcon, Check as CheckIcon, Loader2, Database, Cpu, Lightbulb, Clock, Play } from "lucide-react";
 
@@ -51,6 +51,10 @@ export default function Home() {
 
   const [debugInfo, setDebugInfo] = useState<{message?: string; error?: string}>();
   const [debugLoading, setDebugLoading] = useState(false);
+
+  const [showSlowQueries, setShowSlowQueries] = useState(false);
+  const [needsAiGeneration, setNeedsAiGeneration] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   // Function to get status icon and color
   const getStatusDisplay = (status: QueryStatus, progress: number) => {
@@ -110,6 +114,36 @@ export default function Home() {
     }
   }, []);
 
+  const checkSlowQueriesPreview = useCallback(async () => {
+    try {
+      const r = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/slow_queries/preview`);
+      const data: SlowQueriesResponse = await r.json();
+      const queries = data.queries ?? [];
+      
+      // Check if any queries need AI generation
+      const queriesNeedingAi = queries.filter(q => q.status === "pending");
+      const queriesWithAi = queries.filter(q => q.status === "completed");
+      
+      if (queries.length === 0) {
+        // No slow queries found
+        setShowSlowQueries(false);
+        setNeedsAiGeneration(false);
+             } else {
+         // Show all queries regardless of AI status
+         setSlowQueries(queries);
+         setSessionId(data.session_id);  
+         setShowSlowQueries(true);
+         // Set whether we need AI generation for the button
+         setNeedsAiGeneration(queriesNeedingAi.length > 0);
+       }
+    } catch (err) {
+      console.error("Error checking slow queries preview:", err);
+      setSqError("Failed to check slow queries.");
+    } finally {
+      setInitialLoading(false);
+    }
+  }, []);
+
   const fetchSlowQueries = useCallback(async () => {
     setSqLoading(true);
     setSqError(null);
@@ -141,6 +175,11 @@ export default function Home() {
     }
   }, [pollStatusUpdates]);
 
+  // Check for existing slow queries on page load
+  useEffect(() => {
+    checkSlowQueriesPreview();
+  }, [checkSlowQueriesPreview]);
+
   // Cleanup polling on unmount
   useEffect(() => {
     return () => {
@@ -150,9 +189,6 @@ export default function Home() {
     };
   }, []);
 
-  useEffect(() => {
-    fetchSlowQueries();
-  }, [fetchSlowQueries]);
 
   const fetchDebugInfo = async () => {
     if (debugLoading) return;
@@ -321,7 +357,9 @@ export default function Home() {
           )}
 
           <div>
-            <h2 className="font-semibold mb-2">AI suggestions</h2>
+            <h1 className="font-semibold mb-2">
+              {query.status === "pending" ? "Not Analyzed" : "AI suggestions"}
+            </h1>
             {query.status === "completed" ? (
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
@@ -440,6 +478,10 @@ export default function Home() {
               <div className="bg-red-900/20 border border-red-700/50 rounded-lg p-4">
                 <p className="text-red-400">{query.suggestions}</p>
               </div>
+            ) : query.status === "pending" ? (
+              <div className="bg-gray-900/20 border border-gray-600/30 rounded-lg p-4">
+                <p className="text-gray-400">This query hasn't been analyzed yet. Click "Run Analysis" to generate AI suggestions.</p>
+              </div>
             ) : (
               <div className="space-y-3">
                 {/* Skeleton animation for suggestions */}
@@ -460,134 +502,100 @@ export default function Home() {
 
   return (
     <main className="flex flex-col items-center justify-start min-h-screen p-8 w-full bg-gradient-to-br from-[#0d1117] via-[#0a1120] to-black text-slate-100">
-      <Tabs defaultValue="optimize" className="w-full max-w-5xl">
-        <TabsList className="mb-8 flex justify-center">
-          <TabsTrigger value="optimize">Optimizer</TabsTrigger>
-          <TabsTrigger value="slow-queries">Slow Queries</TabsTrigger>
-          <TabsTrigger value="debug">Debug</TabsTrigger>
-        </TabsList>
+      <h1 className="text-4xl font-bold mb-8 text-center">
+        Yugabyte AI Query Tuner
+      </h1>
 
-        <TabsContent value="optimize">
-          {/* --- existing optimizer UI start --- */}
-          <div className="flex flex-col items-center space-y-6">
-            <h1 className="text-3xl font-bold">SQL Optimizer</h1>
-
-            <textarea
-              className="w-full max-w-2xl h-48 p-3 border rounded bg-gray-800 text-gray-100 border-gray-600 placeholder-gray-400 font-mono"
-              placeholder="Paste your SQL query here..."
-              value={sql}
-              onChange={e => setSql(e.target.value)}
-            />
-
+      {/* Initial loading or Run button */}
+      {!showSlowQueries && (
+        <div className="flex flex-col items-center mb-10">
+          {initialLoading ? (
+            <div className="inline-flex items-center gap-2 px-6 py-3">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Checking for slow queries...</span>
+            </div>
+          ) : needsAiGeneration ? (
             <button
-              onClick={optimize}
-              disabled={loading}
-              className="px-4 py-2 rounded text-white bg-blue-600 disabled:opacity-50"
-            >
-              {loading ? "Optimizing…" : "Optimize"}
-            </button>
-
-            {result?.error && <p className="text-red-600">{result.error}</p>}
-
-            {result?.optimized_query && (
-              <section className="w-full max-w-2xl space-y-4">
-                <div>
-                  <h2 className="font-semibold">Optimized query</h2>
-                  <SyntaxHighlighter
-                    language="sql"
-                    style={atomOneDark}
-                    wrapLongLines
-                    customStyle={{
-                      fontFamily: "var(--font-geist-mono)",
-                      borderRadius: "0.75rem",
-                      padding: "1.25rem",
-                    }}
-                  >
-                    {result.optimized_query ?? ""}
-                  </SyntaxHighlighter>
-                </div>
-                {result.explanation && (
-                  <div>
-                    <h2 className="font-semibold">Explanation</h2>
-                    <p className="bg-gray-800 p-4 rounded text-gray-200 whitespace-pre-wrap font-mono">
-                      {result.explanation}
-                    </p>
-                  </div>
-                )}
-              </section>
-            )}
-          </div>
-          {/* --- existing optimizer UI end --- */}
-        </TabsContent>
-
-        <TabsContent value="slow-queries">
-          <div className="space-y-6">
-            <div className="flex items-center gap-4">
-            <button
-              onClick={fetchSlowQueries}
+              onClick={() => {
+                setShowSlowQueries(true);
+                fetchSlowQueries();
+              }}
               disabled={sqLoading}
-              className="px-4 py-2 rounded-md bg-gradient-to-r from-cyan-500 to-indigo-500 font-medium hover:brightness-110 transition disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-md bg-white text-gray-900 hover:bg-gray-200 shadow-lg transition disabled:opacity-50"
             >
-              {sqLoading ? "Refreshing…" : "Refresh"}
+              {sqLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Generating AI suggestions…
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4" />
+                  Generate AI Suggestions
+                </>
+              )}
             </button>
-              {sqError && <p className="text-red-600">{sqError}</p>}
+          ) : slowQueries.length === 0 ? (
+            <div className="text-center">
+              <p className="text-gray-400 text-lg">No slow queries found 🎉</p>
+              <p className="text-gray-500 text-sm mt-2">Your database is performing well!</p>
+            </div>
+          ) : null}
+          {sqError && <p className="text-red-600 mt-2">{sqError}</p>}
+        </div>
+      )}
+
+      {/* Slow Queries view */}
+      {showSlowQueries && (
+        <div className="space-y-6 w-full max-w-5xl">
+          {needsAiGeneration && (
+            <div className="flex flex-col items-center gap-4">
+              <button
+                onClick={fetchSlowQueries}
+                disabled={sqLoading}
+                className="inline-flex items-center gap-2 px-6 py-2 rounded-md bg-white text-gray-900 hover:bg-gray-200 shadow-lg transition disabled:opacity-50"
+              >
+                {sqLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Generating AI suggestions…
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4" />
+                    Run Analysis
+                  </>
+                )}
+              </button>
               {sessionId && (
                 <p className="text-sm text-gray-400">
                   Session: {sessionId.slice(0, 8)}...
                 </p>
               )}
             </div>
+          )}
 
-            <div className="flex flex-col gap-6 w-full">
-              {slowQueries.map((q, idx) => {
-                const statusDisplay = getStatusDisplay(q.status, q.progress_percentage);
-                return (
-                  <SkeletonCard 
-                    key={q.id ?? idx} 
-                    query={q}
-                    status={statusDisplay}
-                    currentStep={q.current_step}
-                    progress={q.progress_percentage}
-                  />
-                );
-              })}
-            </div>
-
-            {!sqLoading && slowQueries.length === 0 && (
-              <p className="text-gray-400 text-center">No slow queries found 🎉</p>
-            )}
+          <div className="flex flex-col gap-6 w-full">
+            {slowQueries.map((q, idx) => {
+              const statusDisplay = getStatusDisplay(
+                q.status,
+                q.progress_percentage
+              );
+              return (
+                <SkeletonCard
+                  key={q.id ?? idx}
+                  query={q}
+                  status={statusDisplay}
+                  currentStep={q.current_step}
+                  progress={q.progress_percentage}
+                />
+              );
+            })}
           </div>
-        </TabsContent>
 
-        <TabsContent value="debug">
-          <div className="space-y-6">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={fetchDebugInfo}
-                disabled={debugLoading}
-                className="px-4 py-2 rounded-md bg-gradient-to-r from-purple-500 to-pink-500 font-medium hover:brightness-110 transition disabled:opacity-50"
-              >
-                {debugLoading ? "Loading…" : "Fetch Debug Info"}
-              </button>
-            </div>
 
-            <Card className="w-full max-w-2xl bg-[#131a24]/80 border-[#1f2a37]/80 shadow-lg shadow-purple-500/10 backdrop-blur-md">
-              <CardHeader>
-                <CardTitle>Debug Information</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {debugInfo?.error ? (
-                  <p className="text-red-400">{debugInfo.error}</p>
-                ) : debugInfo?.message ? (
-                  <p className="text-gray-200">{debugInfo.message}</p>
-                ) : (
-                  <p className="text-gray-400">Click &quot;Fetch Debug Info&quot; to load debug information.</p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-      </Tabs>
+        </div>
+      )}
     </main>
   );
 }
