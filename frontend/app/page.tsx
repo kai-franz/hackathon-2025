@@ -180,6 +180,9 @@ export default function Home() {
                           h3: ({ node, ...props }) => (
                             <h3 className="mt-6 mb-3 text-lg font-semibold" {...props} />
                           ),
+                          h4: ({ node, ...props }) => (
+                            <h4 className="mt-8 mb-4 text-2xl font-bold" {...props} />
+                          ),
                           p: ({ node, ...props }) => (
                             <p className="mb-4 leading-relaxed" {...props} />
                           ),
