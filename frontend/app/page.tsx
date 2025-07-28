@@ -38,6 +38,12 @@ export default function Home() {
     executed_queries: ExecutedQuery[];
   };
 
+  type StatusDisplay = {
+    icon: React.ReactNode;
+    color: string;
+    bgColor: string;
+  };
+
   type SlowQueriesResponse = {
     queries: SlowQuery[];
     session_id: string;
@@ -225,7 +231,7 @@ export default function Home() {
   };
 
   // Skeleton component for loading state
-  const SkeletonCard = ({ query, status, currentStep, progress }: { query: SlowQuery, status: any, currentStep?: string, progress: number }) => {
+  const SkeletonCard = ({ query, status, currentStep, progress }: { query: SlowQuery, status: StatusDisplay, currentStep?: string, progress: number }) => {
     // CopyButton for code blocks (same as in AI suggestion blocks)
     const CopyButton = ({ text }: { text: string }) => {
       const [copied, setCopied] = useState(false);
@@ -480,7 +486,7 @@ export default function Home() {
               </div>
             ) : query.status === "pending" ? (
               <div className="bg-gray-900/20 border border-gray-600/30 rounded-lg p-4">
-                <p className="text-gray-400">This query hasn't been analyzed yet. Click "Run Analysis" to generate AI suggestions.</p>
+                <p className="text-gray-400">This query hasn&apos;t been analyzed yet. Click &quot;Run Analysis&quot; to generate AI suggestions.</p>
               </div>
             ) : (
               <div className="space-y-3">
