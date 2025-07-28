@@ -120,7 +120,11 @@ export default function Home() {
                     language="sql"
                     style={atomOneDark}
                     wrapLongLines
-                    customStyle={{ fontFamily: "var(--font-geist-mono)" }}
+                    customStyle={{
+                      fontFamily: "var(--font-geist-mono)",
+                      borderRadius: "0.75rem",
+                      padding: "1.25rem",
+                    }}
                   >
                     {result.optimized_query ?? ""}
                   </SyntaxHighlighter>
@@ -164,7 +168,11 @@ export default function Home() {
                         language="sql"
                         style={atomOneDark}
                         wrapLongLines
-                        customStyle={{ fontFamily: "var(--font-geist-mono)" }}
+                        customStyle={{
+                          fontFamily: "var(--font-geist-mono)",
+                          borderRadius: "0.75rem",
+                          padding: "1.25rem",
+                        }}
                       >
                         {q.query}
                       </SyntaxHighlighter>
@@ -239,8 +247,8 @@ export default function Home() {
                                     wrapLongLines
                                     customStyle={{
                                       fontFamily: "var(--font-geist-mono)",
-                                      borderRadius: "0.5rem",
-                                      padding: "1rem",
+                                      borderRadius: "0.75rem",
+                                      padding: "1.25rem",
                                       background: "rgba(255,255,255,0.05)",
                                     }}
                                   >
