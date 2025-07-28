@@ -1,8 +1,14 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { Light as SyntaxHighlighter } from "react-syntax-highlighter";
 import ReactMarkdown from "react-markdown";
-import { atomOneDarkReasonable } from "react-syntax-highlighter/dist/esm/styles/hljs";
+import { atomOneDark, atomOneDarkReasonable } from "react-syntax-highlighter/dist/esm/styles/hljs";
+import sql from "react-syntax-highlighter/dist/esm/languages/hljs/sql";
+import javascript from "react-syntax-highlighter/dist/esm/languages/hljs/javascript";
+
+// Register languages for highlight.js instance
+SyntaxHighlighter.registerLanguage("sql", sql);
+SyntaxHighlighter.registerLanguage("javascript", javascript);
 import remarkGfm from "remark-gfm";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -112,7 +118,7 @@ export default function Home() {
                   <h2 className="font-semibold">Optimized query</h2>
                   <SyntaxHighlighter
                     language="sql"
-                    style={atomOneDarkReasonable}
+                    style={atomOneDark}
                     wrapLongLines
                     customStyle={{ fontFamily: "var(--font-geist-mono)" }}
                   >
@@ -156,7 +162,7 @@ export default function Home() {
                     <div>
                       <SyntaxHighlighter
                         language="sql"
-                        style={atomOneDarkReasonable}
+                        style={atomOneDark}
                         wrapLongLines
                         customStyle={{ fontFamily: "var(--font-geist-mono)" }}
                       >
@@ -229,7 +235,7 @@ export default function Home() {
                                   <CopyButton />
                                   <SyntaxHighlighter
                                     language={match[1]}
-                                    style={atomOneDarkReasonable}
+                                    style={atomOneDark}
                                     wrapLongLines
                                     customStyle={{
                                       fontFamily: "var(--font-geist-mono)",
