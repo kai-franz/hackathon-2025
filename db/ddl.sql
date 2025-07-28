@@ -32,5 +32,5 @@ CREATE TABLE statements (
     -- AI-generated suggestion
     ai_suggestion        text,
 
-    CONSTRAINT statements_pkey PRIMARY KEY (cluster_id, node_id)
+    CONSTRAINT statements_pkey PRIMARY KEY (cluster_id, node_id, query)
 );
