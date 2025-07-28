@@ -33,7 +33,7 @@ def run_query_on_customer_db(sql: str):
     )
     first_word = sql.strip().split()[0].upper()
     if first_word not in readonly_verbs:
-        raise ValueError("Only read-only queries are allowed")
+        return "ERROR: Only read-only queries are allowed"
 
     conn = None
     try:

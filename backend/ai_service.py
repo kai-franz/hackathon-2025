@@ -1,6 +1,8 @@
+from __future__ import annotations
 import json
 import re
 import pprint
+from typing import Tuple
 from openai import OpenAI
 from config import api_key, SYSTEM_PROMPT, logger
 from database import run_query_on_customer_db
@@ -20,7 +22,7 @@ def call_function(name: str, args: dict):
         return run_query_on_customer_db(args["query"])
     return "Unknown function: " + name
 
-def optimize_query(sql: str) -> tuple[str, str]:
+def optimize_query(sql: str) -> Tuple[str, str]:
     """
     Use OpenAI to optimize a SQL query.
     Returns (optimized_query, explanation) tuple.
@@ -31,7 +33,7 @@ def optimize_query(sql: str) -> tuple[str, str]:
         raise ValueError("OpenAI API key not configured")
     
     resp = client.responses.create(
-        model="gpt-4.1",
+        model="o3",
         instructions=SYSTEM_PROMPT.strip(),
         input=sql,
     )
@@ -61,7 +63,13 @@ def generate_query_suggestions(sql: str) -> str:
         "read-only SQL against the customer's Yugabyte database when helpful. "
         "Before answering, use run_customer_query to gather "
         "information about the customer's database. When you provide the response "
-        "to the user, they should not have to run any queries to confirm your suggestions."
+        "to the user, they should not have to run any queries to confirm your suggestions. "
+        "If you propose a rewrite, run the rewritten query and the original query and compare "
+        "their latency using EXPLAIN (ANALYZE, DIST). Both latencies should be included in your "
+        "response. "
+        "If you propose a new index, use hypopg to test that the index is useful before "
+        "suggesting it. Format your response in Markdown. To make your response as readable as "
+        "possible, make extensive Markdown formatting, especially code blocks using ```."
     )
 
     tools = [
@@ -96,7 +104,7 @@ def generate_query_suggestions(sql: str) -> str:
     while need_more_info:
         logger.info(f"Input messages: {pprint.pformat(input_messages)}")
         response = client.responses.create(
-            model="gpt-4.1",
+            model="o3",
             instructions=instructions,
             input=input_messages,
             tools=tools,
@@ -108,6 +116,8 @@ def generate_query_suggestions(sql: str) -> str:
         need_more_info = False
         for tool_call in response.output:
             if tool_call.type != "function_call":
+                # Reasoning item, we still need to pass it back as an input
+                input_messages.append(tool_call)
                 continue
 
             result = call_function(tool_call.name, tool_call.arguments)
