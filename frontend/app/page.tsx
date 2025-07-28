@@ -306,7 +306,7 @@ export default function Home() {
                 ) : debugInfo?.message ? (
                   <p className="text-gray-200">{debugInfo.message}</p>
                 ) : (
-                  <p className="text-gray-400">Click "Fetch Debug Info" to load debug information.</p>
+                  <p className="text-gray-400">Click &quot;Fetch Debug Info&quot; to load debug information.</p>
                 )}
               </CardContent>
             </Card>
