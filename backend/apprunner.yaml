@@ -4,8 +4,6 @@ runtime: python311
 
 build:
   commands:
-    pre-build:
-      - dnf install -y postgresql
     build:
       - pip3 install --no-cache-dir -r requirements.txt
 
