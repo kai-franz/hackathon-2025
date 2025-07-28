@@ -19,7 +19,6 @@ def run_query_on_aurora(sql, params=None, tx=None):
     if "records" in resp:
         return resp["records"]
     return resp.get("numberOfRecordsUpdated")
-
 def run_query_on_customer_db(sql: str):
     """
     Execute a read-only SQL query against the customer's Yugabyte (YSQL) database
@@ -40,6 +39,9 @@ def run_query_on_customer_db(sql: str):
         conn = psycopg2.connect(**customer_db_params)
         # Make the session explicitly read‑only and autocommit so no transaction is kept open
         conn.set_session(readonly=True, autocommit=True)
+        # Set statement timeout to 1 minute
+        with conn.cursor() as timeout_cur:
+            timeout_cur.execute("SET statement_timeout = '1min'")
         # Query user schemas and set search path
         with conn.cursor() as schema_cur:
             schema_cur.execute("""

@@ -2,7 +2,8 @@ from __future__ import annotations
 import json
 import re
 import pprint
-from typing import Tuple
+import datetime
+from typing import Tuple, Optional
 from openai import OpenAI
 from config import api_key, SYSTEM_PROMPT, logger
 from database import run_query_on_customer_db
@@ -10,8 +11,16 @@ from database import run_query_on_customer_db
 # Initialize OpenAI client
 client = OpenAI(api_key=api_key)
 
-def call_function(name: str, args: dict):
-    """Handle function calls for OpenAI tool use"""
+# Global reference to main module to avoid circular imports
+_main_module = None
+
+def set_main_module(main_module):
+    """Set reference to main module for status updates"""
+    global _main_module
+    _main_module = main_module
+
+def call_function(name: str, args: dict, session_id: Optional[str] = None, query_id: Optional[str] = None):
+    """Handle function calls for OpenAI tool use with optional progress tracking"""
     try:
         args = json.loads(args)
     except json.JSONDecodeError:
@@ -19,7 +28,31 @@ def call_function(name: str, args: dict):
         return f"Invalid arguments for tool {name}"
 
     if name == "run_customer_query":
-        return run_query_on_customer_db(args["query"])
+        customer_query = args["query"]
+        
+        # Update status to show which query is being run
+        if session_id and query_id and _main_module:
+            timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+            _main_module.update_query_customer_query(session_id, query_id, customer_query, timestamp)
+        
+        # Execute the query
+        result = run_query_on_customer_db(customer_query)
+        
+        # Update with result preview if successful
+        if session_id and query_id and _main_module:
+            result_preview = None
+            if isinstance(result, list) and len(result) > 0:
+                result_preview = f"Returned {len(result)} rows"
+            elif isinstance(result, str) and not result.startswith("ERROR:"):
+                result_preview = result[:100] + "..." if len(result) > 100 else result
+            elif isinstance(result, str) and result.startswith("ERROR:"):
+                result_preview = "Query failed"
+            else:
+                result_preview = "No data returned"
+            
+            _main_module.update_executed_query_result(session_id, query_id, result_preview)
+        
+        return result
     return "Unknown function: " + name
 
 def optimize_query(sql: str) -> Tuple[str, str]:
@@ -51,7 +84,7 @@ def optimize_query(sql: str) -> Tuple[str, str]:
     
     return optimized, explanation
 
-def generate_query_suggestions(sql: str) -> str:
+def generate_query_suggestions(sql: str, session_id: Optional[str] = None, query_id: Optional[str] = None) -> str:
     """
     Generate performance suggestions for a SQL query using OpenAI with function calling.
     """
@@ -65,11 +98,13 @@ def generate_query_suggestions(sql: str) -> str:
         "information about the customer's database. When you provide the response "
         "to the user, they should not have to run any queries to confirm your suggestions. "
         "If you propose a rewrite, run the rewritten query and the original query and compare "
-        "their latency using EXPLAIN (ANALYZE, DIST). Both latencies should be included in your "
-        "response. "
-        "If you propose a new index, use hypopg to test that the index is useful before "
-        "suggesting it. Format your response in Markdown. To make your response as readable as "
-        "possible, make extensive Markdown formatting, especially code blocks using ```."
+        "their latency using EXPLAIN (ANALYZE, DIST, FORMAT JSON). Both latencies should be "
+        "included in your response. "
+        "If you propose a new index, use the `hypopg` extension (already created) to test "
+        "that the index is useful before suggesting it. "
+        "Format your response in Markdown. To make your response as readable as "
+        "possible, make extensive Markdown formatting. DO NOT USE MULTIPLE LINES SURROUNDED BY ` IN A ROW, "
+        "ALWAYS PREFER TO USE A SINGLE BLOCK SURROUNDED BY ```."
     )
 
     tools = [
@@ -120,7 +155,7 @@ def generate_query_suggestions(sql: str) -> str:
                 input_messages.append(tool_call)
                 continue
 
-            result = call_function(tool_call.name, tool_call.arguments)
+            result = call_function(tool_call.name, tool_call.arguments, session_id, query_id)
             logger.info(f"Tool call result: {result}")
             input_messages.append(tool_call)
             input_messages.append({

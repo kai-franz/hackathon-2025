@@ -2,16 +2,23 @@ import os
 import datetime
 import subprocess
 import boto3
+import asyncio
+import uuid
+from typing import Dict, List
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List
 
 from config import api_key, logger
-from models import QueryIn, QueryOut, SlowQuery, DebugInfo
+from models import QueryIn, QueryOut, SlowQuery, SlowQueriesResponse, DebugInfo, QueryStatus, ExecutedQuery
 from database import run_query_on_aurora
-from ai_service import optimize_query, generate_query_suggestions
+from ai_service import optimize_query, generate_query_suggestions, set_main_module
 
 app = FastAPI()
+
+# Task management for tracking AI generation progress
+task_sessions: Dict[str, Dict[str, SlowQuery]] = {}
+executor = ThreadPoolExecutor(max_workers=5)
 
 # Restrict in production: use your Vercel domain instead of "*"
 app.add_middleware(
@@ -20,6 +27,84 @@ app.add_middleware(
     allow_methods=["POST", "GET"],
     allow_headers=["*"],
 )
+
+def update_query_status(session_id: str, query_id: str, status: QueryStatus, current_step: str = None, progress: int = 0):
+    """Update the status of a query in the task session"""
+    if session_id in task_sessions and query_id in task_sessions[session_id]:
+        task_sessions[session_id][query_id].status = status
+        if current_step:
+            task_sessions[session_id][query_id].current_step = current_step
+        task_sessions[session_id][query_id].progress_percentage = progress
+        logger.info(f"Updated query {query_id} status to {status} ({progress}%): {current_step}")
+
+def update_query_customer_query(session_id: str, query_id: str, customer_query: str, timestamp: str):
+    """Update the current customer query being executed"""
+    if session_id in task_sessions and query_id in task_sessions[session_id]:
+        task_sessions[session_id][query_id].current_customer_query = customer_query
+        logger.info(f"Query {query_id} now executing: {customer_query[:100]}...")
+
+def update_executed_query_result(session_id: str, query_id: str, result_preview: str):
+    """Add executed query to the history with result preview"""
+    if session_id in task_sessions and query_id in task_sessions[session_id]:
+        current_query = task_sessions[session_id][query_id].current_customer_query
+        if current_query:
+            executed_query = ExecutedQuery(
+                query=current_query,
+                timestamp=datetime.datetime.now().strftime("%H:%M:%S"),
+                result_preview=result_preview
+            )
+            task_sessions[session_id][query_id].executed_queries.append(executed_query)
+            # Clear current query since it's now completed
+            task_sessions[session_id][query_id].current_customer_query = None
+            logger.info(f"Added executed query for {query_id}: {result_preview}")
+
+# Set reference to this module for ai_service after functions are defined
+import sys
+set_main_module(sys.modules[__name__])
+
+def generate_suggestions_with_progress(session_id: str, query_id: str, sql: str):
+    """Generate AI suggestions with progress tracking"""
+    try:
+        logger.info(f"Starting AI generation for query {query_id}")
+        update_query_status(session_id, query_id, QueryStatus.ANALYZING_SCHEMA, "Analyzing database schema", 25)
+        
+        # Add a small delay to simulate schema analysis
+        import time
+        time.sleep(1)
+        
+        update_query_status(session_id, query_id, QueryStatus.RUNNING_EXPLAIN, "Running EXPLAIN analysis", 50)
+        time.sleep(1)
+        
+        update_query_status(session_id, query_id, QueryStatus.GENERATING_SUGGESTIONS, "Generating AI suggestions", 75)
+        
+        # Generate the actual suggestions with session tracking
+        suggestions = generate_query_suggestions(sql, session_id, query_id)
+        
+        # Update the query with results
+        if session_id in task_sessions and query_id in task_sessions[session_id]:
+            task_sessions[session_id][query_id].suggestions = suggestions
+            update_query_status(session_id, query_id, QueryStatus.COMPLETED, "Analysis complete", 100)
+            
+            # Store the AI suggestion back in Aurora
+            try:
+                run_query_on_aurora(
+                    """
+                    UPDATE statements
+                    SET ai_suggestion = :suggestions
+                    WHERE query = :query
+                    """,
+                    params=[
+                        {"name": "suggestions", "value": {"stringValue": suggestions}},
+                        {"name": "query", "value": {"stringValue": sql}},
+                    ],
+                )
+                logger.info("Stored AI suggestion for query in Aurora")
+            except Exception as update_err:
+                logger.error(f"Error storing AI suggestion: {update_err}")
+        
+    except Exception as e:
+        logger.error(f"Error generating suggestions for query {query_id}: {e}")
+        update_query_status(session_id, query_id, QueryStatus.ERROR, f"Error: {str(e)}", 0)
 
 @app.post("/optimize", response_model=QueryOut)
 async def optimize(query: QueryIn):
@@ -35,13 +120,14 @@ async def optimize(query: QueryIn):
     except Exception as e:
         raise HTTPException(500, str(e))
 
-@app.get("/slow_queries", response_model=List[SlowQuery])
+@app.get("/slow_queries", response_model=SlowQueriesResponse)
 async def slow_queries(limit: int = 5):
     """
-    Return the top `limit` slow queries from statements together with
-    concise AI-generated tuning ideas.
+    Return the top `limit` slow queries with immediate response and parallel AI processing
     """
     logger.info("Fetching slow queries from Aurora")
+    session_id = str(uuid.uuid4())
+    
     # --- pull slow queries from pg_stat_statements ---
     try:
         rows = run_query_on_aurora(
@@ -56,45 +142,66 @@ async def slow_queries(limit: int = 5):
         logger.error(f"Error fetching slow queries: {e}")
         raise HTTPException(500, f"Could not retrieve slow queries: {e}")
 
-    # --- generate AI suggestions for each query ---
-    slow_queries: List[SlowQuery] = []
+    # Create session for tracking
+    task_sessions[session_id] = {}
+    slow_queries_list: List[SlowQuery] = []
+    
+    # --- process queries and start parallel AI generation ---
+    tasks_to_start = []
+    
     for i, row in enumerate(rows):
-        logger.info(f"Processing query {i+1} of {len(rows)}: {row[0]['stringValue']}")
+        query_id = str(i + 1)
         sql = row[0]['stringValue']
         ai_suggestion = row[1]['stringValue'] if row[1].get('stringValue') else None
         
-        # If we already have an AI suggestion stored, use it
+        # Create the slow query object
         if ai_suggestion:
-            suggestions = ai_suggestion
+            # Already have AI suggestion
+            slow_query = SlowQuery(
+                id=query_id,
+                query=sql.strip(),
+                suggestions=ai_suggestion,
+                status=QueryStatus.COMPLETED,
+                current_step="Done analyzing",
+                progress_percentage=100
+            )
         else:
-            try:
-                suggestions = generate_query_suggestions(sql)
-                
-                # Store the AI suggestion back in Aurora
-                try:
-                    run_query_on_aurora(
-                        """
-                        UPDATE statements
-                        SET ai_suggestion = :suggestions
-                        WHERE query = :query
-                        """,
-                        params=[
-                            {"name": "suggestions", "value": {"stringValue": suggestions}},
-                            {"name": "query", "value": {"stringValue": sql}},
-                        ],
-                    )
-                    logger.info("Stored AI suggestion for query in Aurora")
-                except Exception as update_err:
-                    logger.error(f"Error storing AI suggestion: {update_err}")
-            except Exception as ai_err:
-                logger.error(f"OpenAI error for query: {ai_err}")
-                suggestions = "No suggestions available (AI error)."
+            # Need to generate AI suggestion
+            slow_query = SlowQuery(
+                id=query_id,
+                query=sql.strip(),
+                suggestions="Thinking...",
+                status=QueryStatus.PENDING,
+                current_step="Queued for analysis",
+                progress_percentage=0
+            )
+            # Schedule background task for AI generation
+            tasks_to_start.append((session_id, query_id, sql))
+        
+        task_sessions[session_id][query_id] = slow_query
+        slow_queries_list.append(slow_query)
+    
+    # Start all AI generation tasks in parallel
+    for session_id, query_id, sql in tasks_to_start:
+        executor.submit(generate_suggestions_with_progress, session_id, query_id, sql)
+    
+    return SlowQueriesResponse(queries=slow_queries_list, session_id=session_id)
 
-        slow_queries.append(
-            SlowQuery(id=str(len(slow_queries) + 1), query=sql.strip(), suggestions=suggestions)
-        )
+@app.get("/slow_queries/{session_id}/status", response_model=List[SlowQuery])
+async def get_slow_queries_status(session_id: str):
+    """Get the current status of slow queries for a session"""
+    if session_id not in task_sessions:
+        raise HTTPException(404, "Session not found")
+    
+    return list(task_sessions[session_id].values())
 
-    return slow_queries
+@app.delete("/slow_queries/{session_id}")
+async def cleanup_session(session_id: str):
+    """Clean up a completed session"""
+    if session_id in task_sessions:
+        del task_sessions[session_id]
+        return {"message": "Session cleaned up"}
+    raise HTTPException(404, "Session not found")
 
 @app.get("/debug", response_model=DebugInfo)
 async def debug():
