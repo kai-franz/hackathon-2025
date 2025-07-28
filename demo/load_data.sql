@@ -173,7 +173,7 @@ DECLARE
   batch_size   int := 10000;   -- number of *orders* per batch
   offset_val   int := 0;       -- running OFFSET
   inserted_rows int;           -- rows inserted in the most-recent batch
-  scale_factor int := (select scale from scale_factor);
+  scale_factor int := 10;
 BEGIN
   LOOP
     /* Insert one batch and see how many rows we produced */
