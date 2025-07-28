@@ -6,6 +6,7 @@ import { atomOneDarkReasonable } from "react-syntax-highlighter/dist/esm/styles/
 import remarkGfm from "remark-gfm";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Copy as CopyIcon, Check as CheckIcon } from "lucide-react";
 
 export default function Home() {
   const [sql, setSql] = useState("");
@@ -22,7 +23,6 @@ export default function Home() {
   const [debugLoading, setDebugLoading] = useState(false);
 
   const fetchSlowQueries = useCallback(async () => {
-    if (sqLoading) return;
     setSqLoading(true);
     setSqError(null);
     try {
@@ -35,7 +35,7 @@ export default function Home() {
     } finally {
       setSqLoading(false);
     }
-  }, [sqLoading]);
+  }, []);
 
   useEffect(() => {
     fetchSlowQueries();
@@ -154,7 +154,6 @@ export default function Home() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div>
-                      <h3 className="font-semibold mb-2">Original</h3>
                       <SyntaxHighlighter
                         language="sql"
                         style={atomOneDarkReasonable}
@@ -165,7 +164,7 @@ export default function Home() {
                       </SyntaxHighlighter>
                     </div>
                     <div>
-                      <h3 className="font-semibold mb-2">AI suggestions</h3>
+                      <h2 className="font-semibold mb-2">AI suggestions</h2>
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         className="prose md:prose-lg prose-invert max-w-none"
@@ -198,22 +197,59 @@ export default function Home() {
                               {...props}
                             />
                           ),
-                          // Preserve existing code-block syntax highlighting
                           code({ node, className, children, ...props }) {
                             const match = /language-(\w+)/.exec(className || "");
                             const isInline =
                               !node || node.position?.start.line === node.position?.end.line;
-                            return !isInline && match ? (
-                              <SyntaxHighlighter
-                                language={match[1]}
-                                style={atomOneDarkReasonable}
-                                wrapLongLines
-                                customStyle={{ fontFamily: "var(--font-geist-mono)" }}
+
+                            const codeText = String(children).replace(/\n$/, "");
+
+                            if (!isInline && match) {
+                              // Component for the copy button with icon toggle
+                              const CopyButton = () => {
+                                const [copied, setCopied] = useState(false);
+                                const Icon = copied ? CheckIcon : CopyIcon;
+                                return (
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(codeText);
+                                      setCopied(true);
+                                      setTimeout(() => setCopied(false), 2000);
+                                    }}
+                                    className="absolute top-2 right-2 p-1 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors"
+                                    aria-label="Copy code to clipboard"
+                                  >
+                                    <Icon className={`w-4 h-4 ${copied ? "text-green-400" : ""}`} />
+                                  </button>
+                                );
+                              };
+
+                              return (
+                                <div className="relative my-6">
+                                  <CopyButton />
+                                  <SyntaxHighlighter
+                                    language={match[1]}
+                                    style={atomOneDarkReasonable}
+                                    wrapLongLines
+                                    customStyle={{
+                                      fontFamily: "var(--font-geist-mono)",
+                                      borderRadius: "0.5rem",
+                                      padding: "1rem",
+                                      background: "rgba(255,255,255,0.05)",
+                                    }}
+                                  >
+                                    {codeText}
+                                  </SyntaxHighlighter>
+                                </div>
+                              );
+                            }
+
+                            // Inline code or no language: small styling
+                            return (
+                              <code
+                                className={`px-1 py-0.5 rounded bg-gray-700 text-pink-300 ${className || ""}`}
+                                {...props}
                               >
-                                {String(children).replace(/\n$/, "")}
-                              </SyntaxHighlighter>
-                            ) : (
-                              <code className={className} {...props}>
                                 {children}
                               </code>
                             );
