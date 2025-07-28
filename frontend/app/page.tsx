@@ -1,8 +1,9 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import ReactMarkdown from "react-markdown";
 import { atomOneDarkReasonable } from "react-syntax-highlighter/dist/esm/styles/hljs";
+import remarkGfm from "remark-gfm";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 
@@ -20,7 +21,7 @@ export default function Home() {
   const [debugInfo, setDebugInfo] = useState<{message?: string; error?: string}>();
   const [debugLoading, setDebugLoading] = useState(false);
 
-  const fetchSlowQueries = async () => {
+  const fetchSlowQueries = useCallback(async () => {
     if (sqLoading) return;
     setSqLoading(true);
     setSqError(null);
@@ -34,11 +35,11 @@ export default function Home() {
     } finally {
       setSqLoading(false);
     }
-  };
+  }, [sqLoading]);
 
   useEffect(() => {
     fetchSlowQueries();
-  }, []);
+  }, [fetchSlowQueries]);
 
   const fetchDebugInfo = async () => {
     if (debugLoading) return;
@@ -166,11 +167,39 @@ export default function Home() {
                     <div>
                       <h3 className="font-semibold mb-2">AI suggestions</h3>
                       <ReactMarkdown
-                        className="prose prose-sm prose-invert max-w-none"
+                        remarkPlugins={[remarkGfm]}
+                        className="prose md:prose-lg prose-invert max-w-none"
                         components={{
+                          // Add breathing-room around headings
+                          h1: ({ node, ...props }) => (
+                            <h1 className="mt-8 mb-4 text-2xl font-bold" {...props} />
+                          ),
+                          h2: ({ node, ...props }) => (
+                            <h2 className="mt-7 mb-3 text-xl font-semibold" {...props} />
+                          ),
+                          h3: ({ node, ...props }) => (
+                            <h3 className="mt-6 mb-3 text-lg font-semibold" {...props} />
+                          ),
+                          p: ({ node, ...props }) => (
+                            <p className="mb-4 leading-relaxed" {...props} />
+                          ),
+                          ul: ({ node, ...props }) => (
+                            <ul
+                              className="list-disc ml-6 marker:text-slate-300 space-y-2"
+                              {...props}
+                            />
+                          ),
+                          ol: ({ node, ...props }) => (
+                            <ol
+                              className="list-decimal ml-6 marker:text-slate-300 space-y-2"
+                              {...props}
+                            />
+                          ),
+                          // Preserve existing code-block syntax highlighting
                           code({ node, className, children, ...props }) {
                             const match = /language-(\w+)/.exec(className || "");
-                            const isInline = !node || node.position?.start.line === node.position?.end.line;
+                            const isInline =
+                              !node || node.position?.start.line === node.position?.end.line;
                             return !isInline && match ? (
                               <SyntaxHighlighter
                                 language={match[1]}
