@@ -63,27 +63,27 @@ import sys
 set_main_module(sys.modules[__name__])
 
 def generate_suggestions_with_progress(session_id: str, query_id: str, sql: str):
-    """Generate AI suggestions with progress tracking"""
+    """Generate AI suggestions with progress tracking - RUNS IN PARALLEL"""
     try:
-        logger.info(f"Starting AI generation for query {query_id}")
-        update_query_status(session_id, query_id, QueryStatus.ANALYZING_SCHEMA, "Analyzing database schema", 25)
+        logger.info(f"🚀 PARALLEL TASK STARTED for query {query_id} in session {session_id}")
         
-        # Add a small delay to simulate schema analysis
-        import time
-        time.sleep(1)
-        
-        update_query_status(session_id, query_id, QueryStatus.RUNNING_EXPLAIN, "Running EXPLAIN analysis", 50)
-        time.sleep(1)
-        
-        update_query_status(session_id, query_id, QueryStatus.GENERATING_SUGGESTIONS, "Generating AI suggestions", 75)
+        # Check if session still exists
+        if session_id not in task_sessions:
+            logger.error(f"Session {session_id} disappeared before task started")
+            return
+            
+        update_query_status(session_id, query_id, QueryStatus.GENERATING_SUGGESTIONS, "Analyzing query and generating suggestions", 50)
         
         # Generate the actual suggestions with session tracking
+        logger.info(f"Starting AI generation for query {query_id}")
         suggestions = generate_query_suggestions(sql, session_id, query_id)
+        logger.info(f"Completed AI generation for query {query_id}")
         
         # Update the query with results
         if session_id in task_sessions and query_id in task_sessions[session_id]:
             task_sessions[session_id][query_id].suggestions = suggestions
             update_query_status(session_id, query_id, QueryStatus.COMPLETED, "Analysis complete", 100)
+            logger.info(f"✅ PARALLEL TASK COMPLETED for query {query_id}")
             
             # Store the AI suggestion back in Aurora
             try:
@@ -101,10 +101,15 @@ def generate_suggestions_with_progress(session_id: str, query_id: str, sql: str)
                 logger.info("Stored AI suggestion for query in Aurora")
             except Exception as update_err:
                 logger.error(f"Error storing AI suggestion: {update_err}")
+        else:
+            logger.error(f"Session {session_id} or query {query_id} disappeared before completion")
         
     except Exception as e:
-        logger.error(f"Error generating suggestions for query {query_id}: {e}")
-        update_query_status(session_id, query_id, QueryStatus.ERROR, f"Error: {str(e)}", 0)
+        logger.error(f"Error generating suggestions for query {query_id}: {e}", exc_info=True)
+        if session_id in task_sessions and query_id in task_sessions[session_id]:
+            update_query_status(session_id, query_id, QueryStatus.ERROR, f"Error: {str(e)}", 0)
+        else:
+            logger.error(f"Cannot update error status - session {session_id} or query {query_id} missing")
 
 @app.post("/optimize", response_model=QueryOut)
 async def optimize(query: QueryIn):
@@ -157,6 +162,7 @@ async def slow_queries(limit: int = 5):
         # Create the slow query object
         if ai_suggestion:
             # Already have AI suggestion
+            logger.info(f"Query {query_id} already has AI suggestion, marking as completed")
             slow_query = SlowQuery(
                 id=query_id,
                 query=sql.strip(),
@@ -167,13 +173,14 @@ async def slow_queries(limit: int = 5):
             )
         else:
             # Need to generate AI suggestion
+            logger.info(f"Query {query_id} needs AI suggestion, scheduling for processing")
             slow_query = SlowQuery(
                 id=query_id,
                 query=sql.strip(),
                 suggestions="Thinking...",
-                status=QueryStatus.PENDING,
-                current_step="Queued for analysis",
-                progress_percentage=0
+                status=QueryStatus.ANALYZING_SCHEMA,
+                current_step="Running in parallel...",
+                progress_percentage=25
             )
             # Schedule background task for AI generation
             tasks_to_start.append((session_id, query_id, sql))
@@ -182,26 +189,48 @@ async def slow_queries(limit: int = 5):
         slow_queries_list.append(slow_query)
     
     # Start all AI generation tasks in parallel
-    for session_id, query_id, sql in tasks_to_start:
-        executor.submit(generate_suggestions_with_progress, session_id, query_id, sql)
+    logger.info(f"Starting {len(tasks_to_start)} background tasks IN PARALLEL for session {session_id}")
+    for task_session_id, query_id, sql in tasks_to_start:
+        logger.info(f"Launching parallel task for query {query_id} in session {task_session_id}")
+        executor.submit(generate_suggestions_with_progress, task_session_id, query_id, sql)
     
+    logger.info(f"Created session {session_id} with {len(slow_queries_list)} queries")
     return SlowQueriesResponse(queries=slow_queries_list, session_id=session_id)
 
 @app.get("/slow_queries/{session_id}/status", response_model=List[SlowQuery])
 async def get_slow_queries_status(session_id: str):
     """Get the current status of slow queries for a session"""
+    logger.info(f"Status request for session {session_id}")
+    logger.info(f"Available sessions: {list(task_sessions.keys())}")
+    
     if session_id not in task_sessions:
+        logger.error(f"Session {session_id} not found in task_sessions")
         raise HTTPException(404, "Session not found")
     
-    return list(task_sessions[session_id].values())
+    queries = list(task_sessions[session_id].values())
+    logger.info(f"Returning {len(queries)} queries for session {session_id}")
+    return queries
 
 @app.delete("/slow_queries/{session_id}")
 async def cleanup_session(session_id: str):
     """Clean up a completed session"""
-    if session_id in task_sessions:
-        del task_sessions[session_id]
-        return {"message": "Session cleaned up"}
-    raise HTTPException(404, "Session not found")
+    logger.info(f"Cleanup request for session {session_id}")
+    
+    if session_id not in task_sessions:
+        logger.warning(f"Session {session_id} not found for cleanup")
+        raise HTTPException(404, "Session not found")
+    
+    # Check if all queries are actually completed before cleanup
+    queries = list(task_sessions[session_id].values())
+    incomplete_queries = [q for q in queries if q.status not in ["completed", "error"]]
+    
+    if incomplete_queries:
+        logger.warning(f"Session {session_id} has {len(incomplete_queries)} incomplete queries, refusing cleanup")
+        return {"message": f"Session has {len(incomplete_queries)} incomplete queries, not cleaned up"}
+    
+    logger.info(f"Cleaning up session {session_id} with {len(queries)} completed queries")
+    del task_sessions[session_id]
+    return {"message": "Session cleaned up"}
 
 @app.get("/debug", response_model=DebugInfo)
 async def debug():

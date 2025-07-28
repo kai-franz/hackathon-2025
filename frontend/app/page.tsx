@@ -82,15 +82,27 @@ export default function Home() {
         
         // Check if all queries are completed or errored
         const allDone = data.every(q => q.status === "completed" || q.status === "error");
+        console.log(`Session ${sessionId}: ${data.length} queries, all done: ${allDone}`);
+        
         if (allDone && pollIntervalRef.current) {
+          console.log(`Stopping polling for session ${sessionId}`);
           clearInterval(pollIntervalRef.current);
           pollIntervalRef.current = null;
-          // Cleanup session after a delay
+          // Cleanup session after a longer delay to be safe
           setTimeout(() => {
+            console.log(`Cleaning up session ${sessionId}`);
             fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/slow_queries/${sessionId}`, {
               method: 'DELETE'
             }).catch(console.error);
-          }, 5000);
+          }, 10000); // Increased delay to 10 seconds
+        }
+      } else {
+        console.error(`Failed to poll status for session ${sessionId}: ${r.status} ${r.statusText}`);
+        // If we get a 404, the session might have been cleaned up, stop polling
+        if (r.status === 404 && pollIntervalRef.current) {
+          console.log(`Session ${sessionId} not found, stopping polling`);
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
         }
       }
     } catch (err) {
@@ -178,26 +190,39 @@ export default function Home() {
 
   // Skeleton component for loading state
   const SkeletonCard = ({ query, status, currentStep, progress }: { query: SlowQuery, status: any, currentStep?: string, progress: number }) => {
+    // CopyButton for code blocks (same as in AI suggestion blocks)
+    const CopyButton = ({ text }: { text: string }) => {
+      const [copied, setCopied] = useState(false);
+      const Icon = copied ? CheckIcon : CopyIcon;
+      return (
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(text);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }}
+          className="absolute top-2 right-2 p-1 bg-gray-700 hover:bg-gray-600 rounded-md transition-colors"
+          aria-label="Copy code to clipboard"
+        >
+          <Icon className={`w-4 h-4 ${copied ? 'text-green-400' : ''}`} />
+        </button>
+      );
+    };
     return (
       <Card className={`w-full ${status.bgColor} border-[#1f2a37]/80 shadow-lg backdrop-blur-md transition-all duration-300`}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <span className={status.color}>{status.icon}</span>
             Slow Query #{query.id}
-            <div className="ml-auto text-sm font-normal text-gray-400">
-              {progress}%
-            </div>
           </CardTitle>
-          {currentStep && (
+          {currentStep && query.status !== "completed" && query.status !== "error" && (
             <div className="text-sm text-gray-400 mt-1 flex items-center gap-2">
-              <div className="w-full bg-gray-700/50 rounded-full h-2">
+              <div className="w-full bg-gray-700/50 rounded-full h-1">
                 <div 
-                  className={`h-2 rounded-full transition-all duration-500 ${
-                    query.status === "completed" ? "bg-green-500" : 
-                    query.status === "error" ? "bg-red-500" : 
-                    "bg-blue-500"
+                  className={`h-1 rounded-full transition-all duration-500 ${
+                    query.current_customer_query ? "bg-green-500 animate-pulse" : "bg-blue-500 animate-pulse"
                   }`}
-                  style={{ width: `${progress}%` }}
+                  style={{ width: "100%" }}
                 />
               </div>
             </div>
@@ -209,18 +234,23 @@ export default function Home() {
         <CardContent className="space-y-4">
           <div>
             <h3 className="text-sm font-semibold mb-2 text-gray-300">Original Query</h3>
-            <SyntaxHighlighter
-              language="sql"
-              style={atomOneDark}
-              wrapLongLines
-              customStyle={{
-                fontFamily: "var(--font-geist-mono)",
-                borderRadius: "0.75rem",
-                padding: "1.25rem",
-              }}
-            >
-              {query.query}
-            </SyntaxHighlighter>
+            <div className="relative">
+              <CopyButton text={query.query} />
+              <SyntaxHighlighter
+                language="sql"
+                style={atomOneDark}
+                wrapLongLines
+                customStyle={{
+                  fontFamily: "var(--font-geist-mono)",
+                  borderRadius: "0.75rem",
+                  padding: "1.25rem",
+                  background: "rgba(255,255,255,0.05)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                }}
+              >
+                {query.query}
+              </SyntaxHighlighter>
+            </div>
           </div>
 
           {/* Current customer query being executed */}
@@ -228,7 +258,7 @@ export default function Home() {
             <div className="border border-blue-500/30 rounded-lg p-3 bg-blue-900/10">
               <div className="flex items-center gap-2 mb-2">
                 <Play className="w-4 h-4 text-blue-400 animate-pulse" />
-                <h3 className="text-sm font-semibold text-blue-400">Currently Running on Customer DB:</h3>
+                <h3 className="text-sm font-semibold text-blue-400">Currently Running:</h3>
               </div>
               <SyntaxHighlighter
                 language="sql"

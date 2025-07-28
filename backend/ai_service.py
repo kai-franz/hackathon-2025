@@ -103,8 +103,8 @@ def generate_query_suggestions(sql: str, session_id: Optional[str] = None, query
         "If you propose a new index, use the `hypopg` extension (already created) to test "
         "that the index is useful before suggesting it. "
         "Format your response in Markdown. To make your response as readable as "
-        "possible, make extensive Markdown formatting. DO NOT USE MULTIPLE LINES SURROUNDED BY ` IN A ROW, "
-        "ALWAYS PREFER TO USE A SINGLE BLOCK SURROUNDED BY ```."
+        "possible, make extensive Markdown formatting. NEVER use multiple lines "
+        "surrounded by ` in a row, always prefer to use ```."
     )
 
     tools = [
